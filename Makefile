@@ -10,7 +10,7 @@ out/%.o: src/%.cpp src/%.h
 	$(CC) $(CFLAGS) $(LIBS) -c $< -o $@
 
 out/glass: $(OBJ)
-	$(CC) $(CFLAGS) $(OBJ) $(LIBS) -o out/glass
+	$(CC) $(CFLAGS) $(OBJ) $(LIBS) -o out/glass-trans
 
 clean:
-	rm -f out/*.o out/glass
+	rm -f out/*.o out/glass-trans
