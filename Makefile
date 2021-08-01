@@ -9,7 +9,7 @@ OBJ = out/main.o out/utils.o out/netfilter.o out/tcp.o out/table.o out/queue.o o
 out/%.o: src/%.cpp src/%.h
 	$(CC) $(CFLAGS) $(LIBS) -c $< -o $@
 
-out/glass: $(OBJ)
+out/glass-trans: $(OBJ)
 	$(CC) $(CFLAGS) $(OBJ) $(LIBS) -o out/glass-trans
 
 clean:

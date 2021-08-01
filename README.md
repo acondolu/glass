@@ -17,7 +17,7 @@
 
 A _glass router_ acts as the _glass_ service provider; its only role is relaying TCP segments from one peer to the other. The data exchanged during the connection is treated as opaque (could and should be end-to-end encrypted) and is not even buffered. The router service includes two parts:
 - **Translator**: performs address and port translation on incoming TCP segments, in order to redirect them to the correct peer.
-- **Controller**: manages new connection requests by finding suitable open ports, and adding them to the translation table.
+- **Controller**: manages new connection requests by finding suitable open ports, and adding them to the translation table of the translator.
 
 A _glass client_ can bind itself to a _channel_ (the glass equivalent of a TCP port) or connect to an existing channel:
 - When a client is bound to a channel, it keeps an open control connection with the router. In case of an incoming peer connection request, the router will push the connection request, consisting of an IP address + TCP port. TCP data exchanged with the supplied endpoint will be relayed to the connecting peer.
@@ -37,7 +37,7 @@ sudo apt-get install build-essential libnfnetlink-dev libnetfilter-queue-dev
 
 To build the translator:
 ```bash
-make out/glass
+make out/glass-trans
 ```
 
 ## Router configuration
@@ -69,13 +69,13 @@ iptables -A INPUT -p tcp --dport 60000:65535  -j NFQUEUE --queue-num 6
 #### Router
 To start the translator:
 ```bash
-sudo glass-translator [QUEUE_NUM] [CONTROL_UNIX_SOCKET] 
+sudo glass-trans [QUEUE_NUM] [CONTROL_UNIX_SOCKET] 
 ```
 For instance: `glass 6 /tmp/glass.control.s`.
 
 To start the controller:
 ```bash
-glass-controller [PORT] [CONTROL_UNIX_SOCKET] 
+glass-ctrl [PORT] [CONTROL_UNIX_SOCKET] 
 ```
 
 #### Client
@@ -107,6 +107,6 @@ glass-client conn [LOCAL_PORT] [CHANNEL_ID] [ROUTER_ADDRESS]
 <!-- https://www.markdownguide.org/basic-syntax/#reference-style-links -->
 [license-shield]: https://img.shields.io/badge/license-LGPL--3.0-success
 [license-url]: https://github.com/acondolu/glass/blob/main/LICENSE
-[status-shield]: https://img.shields.io/github/workflow/status/acondolu/glass/build/master
+[status-shield]: https://img.shields.io/github/workflow/status/acondolu/glass/build
 [status-url]: https://github.com/acondolu/glass/actions
 [version-shield]: https://img.shields.io/badge/version-alpha-important

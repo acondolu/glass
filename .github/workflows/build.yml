@@ -1,4 +1,4 @@
-name: Build
+name: build
 
 on:
   push:
@@ -18,7 +18,7 @@ jobs:
       run: sudo apt-get -y install build-essential libnfnetlink-dev libnetfilter-queue-dev
 
     - name: Build
-      run: make out/glass
+      run: make out/glass-trans
     
     - name: Test glass-trans
       run: sudo iptables -A INPUT -p tcp --dport 61000:61001  -j NFQUEUE --queue-num 6 && cd test && ./test.sh
