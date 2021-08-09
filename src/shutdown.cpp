@@ -3,8 +3,7 @@
 #include "shutdown.h"
 #include "pipe.h"
 
-// calling p.handle_in() would make the program crash
-Pipe<bool> p(nullptr);
+Pipe<void> p = Pipe<void>();
 
 int Shutdown::fd_in;
 
@@ -16,6 +15,9 @@ int Shutdown::init() {
 }
 
 void Shutdown::exit() {
-  bool b;
-  if (p.enqueue(&b) < 0) std::exit(1);
+  if (p.enqueue(nullptr) < 0) {
+    // Kind shutdown has failed. This should never happen.
+    // Well, there's nothing else to do than just exit.
+    std::exit(1);
+  }
 }

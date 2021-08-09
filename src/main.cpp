@@ -10,6 +10,9 @@
 #include <sys/stat.h>
 #include <unistd.h>
 
+#include "config.h"
+#include "control.h"
+#include "logging.h"
 #include "netfilter.h"
 #include "pipe.h"
 #include "shutdown.h"
@@ -18,52 +21,40 @@
 /**
  * 
  */
-void INThandler(int sig)
+void TERMhandler(int sig)
 {
   Shutdown::exit();
 }
 
 int main(int argc, char *argv[])
 {
-  uint16_t queue_num;
-  char *socket_file;
   // Parse command line arguments
-  if (argc < 3)
+  if (argc != 2)
   {
-    fprintf(stderr, "Usage: %s [QUEUE_NUM] [SOCKET_FILE]\n", argv[0]);
+    fprintf(stderr, "Usage: %s [CONF.JSON]\n", argv[0]);
     return 1;
   }
-  socket_file = argv[2];
-  try
-  {
-    queue_num = std::stoi(argv[1]);
-  }
-  catch (std::invalid_argument const &e)
-  {
-    std::cerr << "Bad input: QUEUE_NUM must be a positive integer" << std::endl;
-    return 1;
-  }
-  catch (std::out_of_range const &e)
-  {
-    std::cerr << "Bad input: QUEUE_NUM must be a small number" << std::endl;
-    return 1;
+  Config::config* cfg = Config::parseConfig(argv[1]);
+  if (cfg == NULL) {
+    Logging::fatal("Error parsing JSON file");
+    return -1;
   }
   // Initialize random
   std::srand(std::time(NULL));
   // Initialize shutdown switch
   if (Shutdown::init() < 0)
   {
-    std::cerr << "Fatal: could not init self pipe." << std::endl;
+    Logging::fatal("Could not init self pipe");
     return 1;
   }
   // Check root
   if (geteuid() != 0)
   {
-    std::cerr << "Must be run as root." << std::endl;
+    Logging::fatal("Must be run as root");
     return EACCES;
   }
   // Initialize TCP handler
-  if (Netfilter::init(queue_num, socket_file) < 0)
+  if (Netfilter::init(cfg) < 0)
   {
     perror("Could not init sockets");
     return 1;
@@ -87,8 +78,9 @@ int main(int argc, char *argv[])
     return errno;
   }
   // Install handlers
-  signal(SIGINT, INThandler);
+  signal(SIGTERM, TERMhandler);
   // Go!
+  Control::run();
   Netfilter::main_loop();
   Netfilter::destroy();
   return 0;

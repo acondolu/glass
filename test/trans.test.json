@@ -1,0 +1,6 @@
+{
+  "port_start": 10,
+  "port_end": 20,
+  "nfqueue": 6,
+  "unix_socket_directory": "/var/run/glass/"
+}

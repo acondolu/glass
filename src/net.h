@@ -1,5 +1,6 @@
 #pragma once
 #include <functional>
+#include <atomic>
 #include <netinet/ip.h>
 #include <netinet/tcp.h>
 #include <stdint.h>
@@ -9,7 +10,7 @@
 /**
  * Counter for IPv4 Identification numbers
  */
-extern uint32_t ipv4_id;
+extern std::atomic<uint32_t> ipv4_id;
 
 /**
  * Raw socket

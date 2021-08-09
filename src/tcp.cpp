@@ -10,7 +10,7 @@
 /**
  * Counter for IPv4 Identification numbers
  */
-uint32_t ipv4_id;
+std::atomic<uint32_t> ipv4_id;
 
 /**
  * Obtain a fresh IPv4 ID

@@ -15,10 +15,16 @@ jobs:
         submodules: recursive
 
     - name: Install build dependencies
-      run: sudo apt-get -y install build-essential libnfnetlink-dev libnetfilter-queue-dev
+      run: sudo apt-get -y install build-essential libnfnetlink-dev libnetfilter-queue-dev libsystemd-dev
 
     - name: Build
       run: make out/glass-trans
     
+    - name: Config iptables
+      run: sudo iptables -A INPUT -p tcp --dport 61000:63000  -j NFQUEUE --queue-num 6
+    
+    - name: Init directory structure
+      run: sudo mkdir -p /var/run/glass/
+
     - name: Test glass-trans
-      run: sudo iptables -A INPUT -p tcp --dport 61000:61001  -j NFQUEUE --queue-num 6 && cd test && ./test.sh
+      run: cd test && ./test.sh

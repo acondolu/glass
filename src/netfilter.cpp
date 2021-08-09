@@ -16,20 +16,25 @@
 
 #include "netfilter.h"
 
+#include "config.h"
+#include "control.h"
 #include "net.h"
 #include "pipe.h"
 #include "shutdown.h"
 #include "socket.h"
 #include "table.h"
 #include "tcp.h"
+#include "translator.h"
+#include "time_queue.h"
+#include "logging.h"
 
-struct nfq_handle *h;
+struct nfq_handle* h;
 
-struct nfq_q_handle *qh;
+struct nfq_q_handle* qh;
 
-Pipe<command> *cmd_pipe;
+Pipe<Translator::cmd>* cmd_pipe;
 
-UnixDomainSocket<command, int> *cmd_sock;
+TimeQueue<Translator::cmd>* defer;
 
 int raw_socket;
 
@@ -161,31 +166,53 @@ void Netfilter::destroy() {
 	nfq_close(h);
 	close(raw_socket);
 	delete cmd_pipe;
-	delete cmd_sock;
 }
 
-int cb_command(command* cmd) {
-  session_data* s0 = (session_data*) calloc(1, sizeof(session_data));
-	session_data* s1 = (session_data*) calloc(1, sizeof(session_data));
-  init_data* d0 = (init_data*) malloc(sizeof(init_data));
-  d0->me = s0;
-  d0->peer = s1;
-  init_data* d1 = (init_data*) malloc(sizeof(init_data));
-  d1->me = s1;
-  d1->peer = s0;
-  init_map[cmd->a0] = d0;
-  init_map[cmd->a1] = d1;
+int cb_command(Translator::cmd* cmd) {
+	// Reminder: we are responsibile for freeing cmd !
+	switch (cmd->tag) {
+		case Translator::LINK: {
+			Addr a0 = cmd->link.a0;
+			Addr a1 = cmd->link.a1;
+			free(cmd);
+			session_data* s0 = (session_data*) calloc(1, sizeof(session_data));
+			session_data* s1 = (session_data*) calloc(1, sizeof(session_data));
+			init_data* d0 = (init_data*) malloc(sizeof(init_data));
+			d0->me = s0;
+			d0->peer = s1;
+			init_data* d1 = (init_data*) malloc(sizeof(init_data));
+			d1->me = s1;
+			d1->peer = s0;
+			init_map[a0] = d0;
+			Translator::cmd* expire0 = (Translator::cmd*) malloc(sizeof(Translator::cmd));
+			expire0->tag = Translator::EXPIRE_LISTEN;
+			expire0->expire_listen = a0;
+			defer->enqueue(expire0, 60);
+			init_map[a1] = d1;
+			Translator::cmd* expire1 = (Translator::cmd*) malloc(sizeof(Translator::cmd));
+			expire1->tag = Translator::EXPIRE_LISTEN;
+			expire1->expire_listen = a1;
+			defer->enqueue(expire1, 60);
+			return 0;
+		}
+		default:
+			free(cmd);
+			printf("FATAL: command not implemented\n");
+			exit(1);
+	}
 	return 0;
 }
 
-int uds_cb(command* cmd) {
-	return cmd_pipe->enqueue(cmd);
+void time_callback(Translator::cmd* c) {
+	// Send address of the command on the queue.
+	// Resposibility for freeing c is deferred to the other end of the pipe.
+	cmd_pipe->enqueue(c);
 }
 
 /**
  * Initialisation function (netfilter & raw socket)
  */
-int Netfilter::init(uint16_t queue_num, char* socket_file) {
+int Netfilter::init(Config::config* cfg) {
 	h = nfq_open();
 	if (!h) {
 		fprintf(stderr, "error during nfq_open()\n");
@@ -204,8 +231,8 @@ int Netfilter::init(uint16_t queue_num, char* socket_file) {
 		return -1;
 	}
 
-	printf("binding this socket to queue '%d'\n", queue_num);
-	qh = nfq_create_queue(h,  queue_num, &cb, NULL);
+	printf("binding this socket to queue '%d'\n", cfg->nfqueue_number);
+	qh = nfq_create_queue(h,  cfg->nfqueue_number, &cb, NULL);
 	if (!qh) {
 		fprintf(stderr, "error during nfq_create_queue()\n");
 		return -1;
@@ -233,18 +260,19 @@ int Netfilter::init(uint16_t queue_num, char* socket_file) {
 	}
 
 	// Init pipe
-	cmd_pipe = new Pipe<command>(cb_command);
+	cmd_pipe = new Pipe<Translator::cmd>();
   if (cmd_pipe->init() < 0) {
     perror("Pipe::init()");
     return -1;
   }
 
 	// Init Unix domain socket
-	cmd_sock = new UnixDomainSocket<command, int>(uds_cb);
-	if (cmd_sock->init(const_cast<char const*>(socket_file)) != 0) {
-    perror("UnixDomainSocket::init()");
+	if (Control::init(cfg, cmd_pipe) < 0) {
+		perror("Control::init()");
     return -1;
-  }
+	}
+
+	defer = new TimeQueue<Translator::cmd>(&time_callback);
 
 	ipv4_id = std::rand() & UINT16_MAX;
 
@@ -260,32 +288,28 @@ void Netfilter::main_loop() {
 	int fd = nfq_fd(h);
 
 	struct pollfd fds[4];
-	fds[0].fd = fd;
+	fds[0].fd = Shutdown::fd_in;
 	fds[1].fd = cmd_pipe->fd_in;
-	fds[2].fd = cmd_sock->socket_fd;
-	fds[3].fd = Shutdown::fd_in;
-	fds[0].events = fds[1].events = fds[2].events = fds[3].events = POLLIN;
+	fds[2].fd = fd;
+	fds[0].events = fds[1].events = fds[2].events = POLLIN;
 	while (true) {
-		poll(fds, 4, -1);
-		if (fds[3].revents & POLLIN) {
-			std::cerr << "Shutdown requested." << std::endl;
+		if (poll(fds, 3, -1) <= 0) {
+			Logging::error("Bug in Netfilter::main_loop: poll errored out");
+			return;
+		}
+		if (fds[0].revents & POLLIN) {
+			// Shutdown requested
 			return;
 		}
 		if (fds[1].revents & POLLIN) {
-			printf("Stuff available on internal pipe\n");
-			if (cmd_pipe->handle_in() < 0) {
-				perror("Pipe::process()");
+			Translator::cmd* c = cmd_pipe->receive();
+			if (c == nullptr) {
+				perror("Bug in Pipe::receive()");
 				return;
 			}
+			cb_command(c);
 		}
 		if (fds[2].revents & POLLIN) {
-			printf("Stuff available from command socket\n");
-			if (cmd_sock->handle_in() < 0) {
-				perror("UnixDomainSocket::handle_in()");
-				return;
-			}
-		}
-		if (fds[0].revents & POLLIN) {
 			rv = recv(fd, buf, sizeof(buf), 0);
 			if (rv < 0) {
 				perror("recv()");

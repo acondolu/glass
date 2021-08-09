@@ -1,8 +1,9 @@
 #pragma once
 #include <cstdint>
+#include "config.h"
 
 namespace Netfilter {
-  int init(uint16_t queue_num, char* socket_file);
+  int init(Config::config*);
   void main_loop();
   void destroy();
 }

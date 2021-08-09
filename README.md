@@ -32,7 +32,7 @@ A _glass client_ can bind itself to a _channel_ (the glass equivalent of a TCP p
 
 To install dev dependencies:
 ```bash
-sudo apt-get install build-essential libnfnetlink-dev libnetfilter-queue-dev
+sudo apt-get install build-essential libnfnetlink-dev libnetfilter-queue-dev libsystemd-dev
 ```
 
 To build the translator:

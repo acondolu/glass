@@ -1,7 +1,7 @@
 // Simple lock-free queue for one-producer and one-consumer only.
 // Code by Herb Sutters.
 // Taken from https://www.drdobbs.com/parallel/writing-lock-free-code-a-corrected-queue/210604448?pgno=2 .
-
+#pragma once
 #include <atomic>
 
 template <typename T>
@@ -13,11 +13,39 @@ class LockFreeQueue {
     Node* next;
   };
   Node* first; // for producer only
-  std::atomic<Node*> divider, last; // shared
+  std::atomic<Node*> divider;
+  std::atomic<Node*> _last; // shared
 
   public:
-  LockFreeQueue();
-  ~LockFreeQueue();
-  void produce(const T&);
-  T* consume();
+  LockFreeQueue() {
+    first = divider = _last =
+      new Node( T() ); // dummy separator
+  };
+  ~LockFreeQueue() {
+    while (first != nullptr) {
+      Node* tmp = first;
+      first = tmp->next;
+      delete tmp;
+    }
+  };
+  // Queue takes ownership of t.
+  void produce(const T* t) {
+    Node* l = _last.load();
+    l->next = new Node(*t);
+    _last.store(l->next);
+    while( first != divider ) {
+      Node* tmp = first;
+      first = first->next;
+      delete tmp;
+    }
+  };
+  // Caller is responsible of freeing the result.
+  T* consume() {
+    if( divider != _last ) {
+      T* result = divider->next->value;
+      divider = divider->next;
+      return result;
+    }
+    return nullptr;
+  };
 };
