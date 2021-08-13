@@ -46,7 +46,6 @@ namespace {
 template<typename T>
 class TimeQueue {
   private:
-  std::atomic<time_t> now; // atomic_long ? not really
   tlist<T>* tl = nullptr;
   void (*_on_expiry)(T*);
   void __main_loop(void* _arg) {
@@ -88,6 +87,7 @@ class TimeQueue {
   }
   LockFreeQueue<tlist<T>> queue;
   public:
+  std::atomic<time_t> now;
   // _on_expiry is responsible of freeing the received pointer
   TimeQueue(void (*on_expiry)(T*)): _on_expiry(on_expiry) {};
   // Takes ownership of the enqueued pointer.
@@ -95,7 +95,7 @@ class TimeQueue {
     tlist<T>* n = new tlist<T>;
     n->content = t;
     n->next = NULL;
-    n->ts = now + expiry;
+    n->ts = expiry;
     queue.produce(n);
   }
   int main_loop() {

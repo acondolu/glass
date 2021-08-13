@@ -76,6 +76,10 @@ static int cb (
 						id->peer->peer = session;
 						init_map.erase(h2);
 						free(id);
+						// expire session
+						Translator::cmd* cmd = new Translator::cmd(Translator::EXPIRE_CONN);
+						cmd->expire_conn = h;
+						defer->enqueue(cmd, defer->now + Translator::EXPIRE_CONN_SECS);
 						goto begin;
 					}
 				}
@@ -96,6 +100,7 @@ static int cb (
 				SynAck* s;
 				switch (session->status) {
 					case LISTEN: {
+						session->last_activity = defer->now;
 						// store sequence numbers
 						session->seq_remote = tcp_info->th_seq;
 						session->remote_win = tcp_info->th_win;
@@ -121,8 +126,10 @@ static int cb (
 						return 0;
 					}
 					case SYN_RCVD:
-						if (peer != NULL && peer->status == SYN_RCVD)
+						if (peer != NULL && peer->status == SYN_RCVD) {
+							session->last_activity = defer->now;
 							session->syn_ack->send();
+						}
 						return 0;
 					case ESTABLISHED:
 					case CLOSED:
@@ -136,6 +143,7 @@ static int cb (
 				session->status = ESTABLISHED;
 			}
 			if (session->status == ESTABLISHED && peer != nullptr && peer->status == ESTABLISHED) {
+				session->last_activity = defer->now;
 				printf(">>>> Relaying TCP segment\n");
 				relay_packet(ip_info, len, session);
 			}
@@ -143,11 +151,7 @@ static int cb (
 			if (flags == TH_RST) {
 				printf(">>>> RST\n");
 				state.erase(h);
-				free(session);
-				if (peer != NULL) {
-					state.erase(peer->addr);
-					free(peer);
-				}
+				session->status = EXPIRED; // CLOSED? FIXME:
 				return 0;
 			}
 			// TODO: FIN & Co.
@@ -168,6 +172,9 @@ void Netfilter::destroy() {
 	delete cmd_pipe;
 }
 
+/**
+ * Process an incoming command.
+ */
 int cb_command(Translator::cmd* cmd) {
 	// Reminder: we are responsibile for freeing cmd !
 	switch (cmd->tag) {
@@ -176,7 +183,9 @@ int cb_command(Translator::cmd* cmd) {
 			Addr a1 = cmd->link.a1;
 			free(cmd);
 			session_data* s0 = (session_data*) calloc(1, sizeof(session_data));
+			s0->last_activity = 0;
 			session_data* s1 = (session_data*) calloc(1, sizeof(session_data));
+			s1->last_activity = 0;
 			init_data* d0 = (init_data*) malloc(sizeof(init_data));
 			d0->me = s0;
 			d0->peer = s1;
@@ -184,15 +193,65 @@ int cb_command(Translator::cmd* cmd) {
 			d1->me = s1;
 			d1->peer = s0;
 			init_map[a0] = d0;
-			Translator::cmd* expire0 = (Translator::cmd*) malloc(sizeof(Translator::cmd));
-			expire0->tag = Translator::EXPIRE_LISTEN;
-			expire0->expire_listen = a0;
-			defer->enqueue(expire0, 60);
 			init_map[a1] = d1;
-			Translator::cmd* expire1 = (Translator::cmd*) malloc(sizeof(Translator::cmd));
-			expire1->tag = Translator::EXPIRE_LISTEN;
-			expire1->expire_listen = a1;
-			defer->enqueue(expire1, 60);
+			// Expire data
+			Translator::cmd* expire = new Translator::cmd(Translator::EXPIRE_LISTEN);
+			expire->expire_listen = {a0, a1};
+			defer->enqueue(expire, defer->now + Translator::EXPIRE_LISTEN_SECS);
+			return 0;
+		}
+		case Translator::EXPIRE_LISTEN: {
+			Addr a0 = cmd->expire_listen.a0;
+			Addr a1 = cmd->expire_listen.a1;
+			init_data* i0 = init_map[a0];
+			init_data* i1 = init_map[a1];
+			session_data* s0;
+			session_data* s1;
+			if (i0 != nullptr) {
+				s0 = i0->me;
+				s1 = i0->peer;
+			} else if (i1 != nullptr) {
+				s0 = i1->peer;
+				s1 = i1->me;
+			} else {
+				// Both entries are not present anymore.
+				free(cmd);
+				return 0;
+			}
+			if (s0->last_activity + Translator::EXPIRE_LISTEN_SECS <= defer->now || s1->last_activity + Translator::EXPIRE_LISTEN_SECS <= defer->now) {
+				// FIXME: check more statuses when they will be implemented
+				if (s0->status == SYN_RCVD || s0->status == ESTABLISHED) state.erase(s0->addr);
+				if (s1->status == SYN_RCVD || s1->status == ESTABLISHED) state.erase(s1->addr);
+				init_map.erase(a0);
+				init_map.erase(a1);
+				free(s0);
+				free(s1);
+				if (i0 != nullptr) free(i0);
+				if (i1 != nullptr) free(i1);
+				free(cmd);
+			} else {
+				defer->enqueue(cmd, std::min(s0->last_activity, s1->last_activity) + Translator::EXPIRE_LISTEN_SECS);
+			}
+			return 0;
+		}
+		case Translator::EXPIRE_CONN: {
+			Addr a = cmd->expire_conn;
+			session_data* s = state[a];
+			if (s != nullptr) {
+				if (s->last_activity + Translator::EXPIRE_CONN_SECS <= defer->now) {
+					state.erase(a);
+					if (s->peer->status == EXPIRED) {
+						free(s->peer);
+						free(s);
+					} else {
+						s->status = EXPIRED;
+					}
+				} else {
+					defer->enqueue(cmd, s->last_activity + Translator::EXPIRE_CONN_SECS);
+					return 0; // don't free cmd
+				}
+			}
+			free(cmd);
 			return 0;
 		}
 		default:

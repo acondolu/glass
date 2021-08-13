@@ -37,7 +37,8 @@ enum conn_status {
   LISTEN, // the peer is unknown, no segment received
   SYN_RCVD, // the initial SYN segment has been received
   ESTABLISHED, // handshake is over, connection established
-  CLOSED //
+  CLOSED, //
+  EXPIRED
 };
 
 class SynAck;
@@ -46,6 +47,7 @@ struct session_data {
   Addr addr;
   session_data* peer;
   conn_status status;
+  time_t last_activity;
   SynAck* syn_ack; // != NULL only when status == SYN_RCVD
   uint16_t dest_port;
   // TCP options values
