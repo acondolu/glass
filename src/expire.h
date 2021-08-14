@@ -4,6 +4,7 @@
 #include <atomic>
 
 #include "queue.h"
+#include "shutdown.h"
 
 namespace {
 template <typename T>

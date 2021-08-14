@@ -190,12 +190,8 @@ int cb_command(Translator::cmd *cmd) {
       s0->last_activity = 0;
       session_data *s1 = (session_data *)calloc(1, sizeof(session_data));
       s1->last_activity = 0;
-      init_data *d0 = (init_data *)malloc(sizeof(init_data));
-      d0->me = s0;
-      d0->peer = s1;
-      init_data *d1 = (init_data *)malloc(sizeof(init_data));
-      d1->me = s1;
-      d1->peer = s0;
+      init_data *d0 = new init_data(s0, s1);
+      init_data *d1 = new init_data(s1, s0);
       init_map[a0] = d0;
       init_map[a1] = d1;
       // Expire data
@@ -245,7 +241,7 @@ int cb_command(Translator::cmd *cmd) {
     case Translator::EXPIRE_CONN: {
       Addr a = cmd->expire_conn;
       session_data *s = state[a];
-      if (s != nullptr) {
+      if (s != nullptr) { // should never be null, actually
         if (s->last_activity + Translator::EXPIRE_CONN_SECS <= expire->now) {
           state.erase(a);
           if (s->peer->status == CLOSED) {

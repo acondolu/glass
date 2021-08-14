@@ -66,6 +66,7 @@ struct session_data {
 
 // pair, ends
 struct init_data {
+  init_data(session_data *me, session_data *peer) : me(me), peer(peer){};
   session_data *me;
   session_data *peer;
 };
