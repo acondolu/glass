@@ -37,8 +37,7 @@ enum conn_status {
   LISTEN, // the peer is unknown, no segment received
   SYN_RCVD, // the initial SYN segment has been received
   ESTABLISHED, // handshake is over, connection established
-  CLOSED, //
-  EXPIRED
+  CLOSED // No more data should be exhanged. Will be freed at timeout.
 };
 
 class SynAck;

@@ -8,8 +8,8 @@ template <typename T>
 class LockFreeQueue {
   private:
   struct Node {
-    Node( T val ) : value(val), next(nullptr) { }
-    T value;
+    Node( T* val ) : value(val), next(nullptr) { }
+    T* value;
     Node* next;
   };
   Node* first; // for producer only
@@ -18,8 +18,7 @@ class LockFreeQueue {
 
   public:
   LockFreeQueue() {
-    first = divider = _last =
-      new Node( T() ); // dummy separator
+    first = divider = _last = new Node(nullptr);
   };
   ~LockFreeQueue() {
     while (first != nullptr) {
@@ -28,10 +27,10 @@ class LockFreeQueue {
       delete tmp;
     }
   };
-  // Queue takes ownership of t.
-  void produce(const T* t) {
+  // Queue takes ownership of pointer.
+  void produce(T* t) {
     Node* l = _last.load();
-    l->next = new Node(*t);
+    l->next = new Node(t);
     _last.store(l->next);
     while( first != divider ) {
       Node* tmp = first;
@@ -41,7 +40,7 @@ class LockFreeQueue {
   };
   // Caller is responsible of freeing the result.
   T* consume() {
-    if( divider != _last ) {
+    if (divider != _last) {
       T* result = divider->next->value;
       divider = divider->next;
       return result;

@@ -7,8 +7,9 @@
 namespace {
   template<typename T>
   struct tlist {
-    time_t ts;
+    tlist<T>(T* content, time_t ts) : content(content), ts(ts), next(nullptr) {};
     T* content;
+    time_t ts;
     tlist* next;
   };
 
@@ -44,7 +45,7 @@ namespace {
 }
 
 template<typename T>
-class TimeQueue {
+class Expire {
   private:
   tlist<T>* tl = nullptr;
   void (*_on_expiry)(T*);
@@ -55,6 +56,7 @@ class TimeQueue {
     fds[0].revents = 0;
     do {
       if (fds[0].revents & POLLIN) {
+        // Shutdown requested
         return;
       }
       now = time(NULL);
@@ -89,14 +91,14 @@ class TimeQueue {
   public:
   std::atomic<time_t> now;
   // _on_expiry is responsible of freeing the received pointer
-  TimeQueue(void (*on_expiry)(T*)): _on_expiry(on_expiry) {};
-  // Takes ownership of the enqueued pointer.
-  void enqueue(T* t, int expiry) {
-    tlist<T>* n = new tlist<T>;
-    n->content = t;
-    n->next = NULL;
-    n->ts = expiry;
-    queue.produce(n);
+  Expire(void (*on_expiry)(T*)): _on_expiry(on_expiry) {};
+  /**
+   * Execute an expiration command when a timestamp is reached.
+   * @param t Expiry command (takes ownership of the pointer).
+   * @param expiry_time Timestamp when the command will be execute.
+   */
+  void timeout(T* t, time_t expiry_time) {
+    queue.produce(new tlist<T>(t, expiry_time));
   }
   int main_loop() {
     pthread_t th;

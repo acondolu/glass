@@ -25,7 +25,7 @@
 #include "table.h"
 #include "tcp.h"
 #include "translator.h"
-#include "time_queue.h"
+#include "expire.h"
 #include "logging.h"
 
 struct nfq_handle* h;
@@ -34,7 +34,7 @@ struct nfq_q_handle* qh;
 
 Pipe<Translator::cmd>* cmd_pipe;
 
-TimeQueue<Translator::cmd>* defer;
+Expire<Translator::cmd>* expire;
 
 int raw_socket;
 
@@ -79,7 +79,7 @@ static int cb (
 						// expire session
 						Translator::cmd* cmd = new Translator::cmd(Translator::EXPIRE_CONN);
 						cmd->expire_conn = h;
-						defer->enqueue(cmd, defer->now + Translator::EXPIRE_CONN_SECS);
+						expire->timeout(cmd, expire->now + Translator::EXPIRE_CONN_SECS);
 						goto begin;
 					}
 				}
@@ -100,7 +100,7 @@ static int cb (
 				SynAck* s;
 				switch (session->status) {
 					case LISTEN: {
-						session->last_activity = defer->now;
+						session->last_activity = expire->now;
 						// store sequence numbers
 						session->seq_remote = tcp_info->th_seq;
 						session->remote_win = tcp_info->th_win;
@@ -127,7 +127,7 @@ static int cb (
 					}
 					case SYN_RCVD:
 						if (peer != NULL && peer->status == SYN_RCVD) {
-							session->last_activity = defer->now;
+							session->last_activity = expire->now;
 							session->syn_ack->send();
 						}
 						return 0;
@@ -143,15 +143,14 @@ static int cb (
 				session->status = ESTABLISHED;
 			}
 			if (session->status == ESTABLISHED && peer != nullptr && peer->status == ESTABLISHED) {
-				session->last_activity = defer->now;
+				session->last_activity = expire->now;
 				printf(">>>> Relaying TCP segment\n");
 				relay_packet(ip_info, len, session);
 			}
 			// RST
 			if (flags == TH_RST) {
 				printf(">>>> RST\n");
-				state.erase(h);
-				session->status = EXPIRED; // CLOSED? FIXME:
+				session->status = CLOSED; // CLOSED? FIXME:
 				return 0;
 			}
 			// TODO: FIN & Co.
@@ -195,9 +194,9 @@ int cb_command(Translator::cmd* cmd) {
 			init_map[a0] = d0;
 			init_map[a1] = d1;
 			// Expire data
-			Translator::cmd* expire = new Translator::cmd(Translator::EXPIRE_LISTEN);
-			expire->expire_listen = {a0, a1};
-			defer->enqueue(expire, defer->now + Translator::EXPIRE_LISTEN_SECS);
+			Translator::cmd* ex = new Translator::cmd(Translator::EXPIRE_LISTEN);
+			ex->expire_listen = {a0, a1};
+			expire->timeout(ex, expire->now + Translator::EXPIRE_LISTEN_SECS);
 			return 0;
 		}
 		case Translator::EXPIRE_LISTEN: {
@@ -218,7 +217,7 @@ int cb_command(Translator::cmd* cmd) {
 				free(cmd);
 				return 0;
 			}
-			if (s0->last_activity + Translator::EXPIRE_LISTEN_SECS <= defer->now || s1->last_activity + Translator::EXPIRE_LISTEN_SECS <= defer->now) {
+			if (s0->last_activity + Translator::EXPIRE_LISTEN_SECS <= expire->now || s1->last_activity + Translator::EXPIRE_LISTEN_SECS <= expire->now) {
 				// FIXME: check more statuses when they will be implemented
 				if (s0->status == SYN_RCVD || s0->status == ESTABLISHED) state.erase(s0->addr);
 				if (s1->status == SYN_RCVD || s1->status == ESTABLISHED) state.erase(s1->addr);
@@ -230,7 +229,7 @@ int cb_command(Translator::cmd* cmd) {
 				if (i1 != nullptr) free(i1);
 				free(cmd);
 			} else {
-				defer->enqueue(cmd, std::min(s0->last_activity, s1->last_activity) + Translator::EXPIRE_LISTEN_SECS);
+				expire->timeout(cmd, std::min(s0->last_activity, s1->last_activity) + Translator::EXPIRE_LISTEN_SECS);
 			}
 			return 0;
 		}
@@ -238,16 +237,16 @@ int cb_command(Translator::cmd* cmd) {
 			Addr a = cmd->expire_conn;
 			session_data* s = state[a];
 			if (s != nullptr) {
-				if (s->last_activity + Translator::EXPIRE_CONN_SECS <= defer->now) {
+				if (s->last_activity + Translator::EXPIRE_CONN_SECS <= expire->now) {
 					state.erase(a);
-					if (s->peer->status == EXPIRED) {
+					if (s->peer->status == CLOSED) {
 						free(s->peer);
 						free(s);
 					} else {
-						s->status = EXPIRED;
+						s->status = CLOSED;
 					}
 				} else {
-					defer->enqueue(cmd, s->last_activity + Translator::EXPIRE_CONN_SECS);
+					expire->timeout(cmd, s->last_activity + Translator::EXPIRE_CONN_SECS);
 					return 0; // don't free cmd
 				}
 			}
@@ -331,7 +330,7 @@ int Netfilter::init(Config::config* cfg) {
     return -1;
 	}
 
-	defer = new TimeQueue<Translator::cmd>(&time_callback);
+	expire = new Expire<Translator::cmd>(&time_callback);
 
 	ipv4_id = std::rand() & UINT16_MAX;
 
