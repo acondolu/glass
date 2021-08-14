@@ -41,8 +41,9 @@ class LockFreeQueue {
   // Caller is responsible of freeing the result.
   T *consume() {
     if (divider != _last) {
-      T *result = divider->next->value;
-      divider = divider->next;
+      Node *next = divider.load()->next;
+      T *result = next->value;
+      divider.store(next);
       return result;
     }
     return nullptr;

@@ -350,6 +350,8 @@ void Netfilter::main_loop() {
   int rv;
   int fd = nfq_fd(h);
 
+  expire->run();
+
   struct pollfd fds[4];
   fds[0].fd = Shutdown::fd_in;
   fds[1].fd = cmd_pipe->fd_in;

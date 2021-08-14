@@ -51,7 +51,12 @@ class Expire {
  private:
   tlist<T> *tl = nullptr;
   void (*_on_expiry)(T *);
-  void __main_loop(void *_arg) {
+  LockFreeQueue<tlist<T>> queue;
+  static void *i(void *x) {
+    ((Expire<T> *)x)->main_loop();
+    return nullptr;
+  }
+  void main_loop() {
     struct pollfd fds[1];
     fds[0].fd = Shutdown::fd_in;
     fds[0].events = POLLIN;
@@ -66,7 +71,7 @@ class Expire {
       struct tlist<T> *tlnew = NULL;
       struct tlist<T> *next = NULL;
       while (true) {
-        next = queue->consume();
+        next = queue.consume();
         if (next != nullptr) {
           next->next = tlnew;
           tlnew = next;
@@ -89,12 +94,11 @@ class Expire {
       }
     } while (poll(fds, 1, 500) >= 0);
   }
-  LockFreeQueue<tlist<T> > queue;
 
  public:
   std::atomic<time_t> now;
   // _on_expiry is responsible of freeing the received pointer
-  Expire(void (*on_expiry)(T *)) : _on_expiry(on_expiry){};
+  Expire(void (*on_expiry)(T *)) : _on_expiry(on_expiry), queue(){};
   /**
    * Execute an expiration command when a timestamp is reached.
    * @param t Expiry command (takes ownership of the pointer).
@@ -103,8 +107,8 @@ class Expire {
   void timeout(T *t, time_t expiry_time) {
     queue.produce(new tlist<T>(t, expiry_time));
   }
-  int main_loop() {
+  int run() {
     pthread_t th;
-    return pthread_create(&th, NULL, &__main_loop, NULL);
+    return pthread_create(&th, NULL, &(Expire<T>::i), (void *)this);
   }
 };
