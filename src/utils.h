@@ -2,4 +2,4 @@
 
 uid_t exeUserId();
 
-bool droproot(const passwd*);
+bool droproot(const passwd *);

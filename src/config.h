@@ -9,6 +9,6 @@ struct config {
   char *unix_socket;
 };
 
-config* parseConfig(char const* jsonpath);
+config *parseConfig(char const *jsonpath);
 
-}
+}  // namespace Config

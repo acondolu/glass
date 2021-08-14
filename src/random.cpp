@@ -7,24 +7,24 @@
 #define M 1024
 
 class Random {
-  unsigned char* buf;
+  unsigned char *buf;
   size_t p;
-  FILE* fd;
-  
+  FILE *fd;
+
   void populate() {
     if (fread(buf, M, 1, fd) < 0) exit(1);
     p = M;
   }
 
-  public:
+ public:
   Random() {
     fd = fopen("/dev/urandom", "r");
     if (fd < 0) exit(1);
-    buf = (unsigned char*) malloc(M);
+    buf = (unsigned char *)malloc(M);
     populate();
   }
 
-  void read(unsigned char* x, size_t num_bytes) {
+  void read(unsigned char *x, size_t num_bytes) {
     if (p < num_bytes) {
       if (num_bytes > M) {
         printf("Random pool is smaller than requested randomness.");

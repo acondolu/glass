@@ -1,8 +1,9 @@
-#include <libgen.h>
-#include "rapidjson/document.h"
-
 #include "config.h"
+
+#include <libgen.h>
+
 #include "logging.h"
+#include "rapidjson/document.h"
 
 using namespace Config;
 
@@ -10,17 +11,17 @@ using namespace Config;
 //   return nullptr;
 // }
 
-config* Config::parseConfig(char const *jsonpath) {
-  config* cfg = (config*) malloc(sizeof(config));
+config *Config::parseConfig(char const *jsonpath) {
+  config *cfg = (config *)malloc(sizeof(config));
   rapidjson::Document document;
-  char* buffer = NULL;
+  char *buffer = NULL;
   size_t jslen = 0;
-  FILE * fp = fopen(jsonpath, "rb");
+  FILE *fp = fopen(jsonpath, "rb");
   if (fp == NULL) {
     Logging::error("Error opening JSON file");
     return nullptr;
   }
-  ssize_t bytes_read = getdelim( &buffer, &jslen, '\0', fp);
+  ssize_t bytes_read = getdelim(&buffer, &jslen, '\0', fp);
   if (bytes_read < 0) {
     fclose(fp);
     Logging::error("Error reading JSON file");
@@ -28,8 +29,8 @@ config* Config::parseConfig(char const *jsonpath) {
   }
   fclose(fp);
 
-  char* sock_name = (char*) malloc(strlen(jsonpath) + 3);
-  char* jsonpath_ = strdup(jsonpath);
+  char *sock_name = (char *)malloc(strlen(jsonpath) + 3);
+  char *jsonpath_ = strdup(jsonpath);
   strcpy(sock_name, basename(jsonpath_));
   free(jsonpath_);
   for (int i = strlen(sock_name); i >= 0; i--) {
@@ -61,21 +62,21 @@ config* Config::parseConfig(char const *jsonpath) {
   if (mi == document.MemberEnd()) {
     Logging::error("`unix_socket_directory` not found in configuration");
     return nullptr;
-  } else if (! (mi->value.IsString())) {
+  } else if (!(mi->value.IsString())) {
     Logging::error("`unix_socket_directory` should be a non-empty string");
     return nullptr;
   }
-  char* dir = strdup(mi->value.GetString());
+  char *dir = strdup(mi->value.GetString());
   int dir_len = strlen(dir);
   if (dir_len == 0) {
     Logging::error("`unix_socket_directory` cannot be empty");
     return nullptr;
   }
-  if (dir[dir_len-1] != '/') {
+  if (dir[dir_len - 1] != '/') {
     Logging::error("`unix_socket_directory` must end with '/'");
     return nullptr;
   }
-  char* path = (char*) malloc(dir_len + strlen(sock_name) + 1);
+  char *path = (char *)malloc(dir_len + strlen(sock_name) + 1);
   memcpy(path, dir, dir_len);
   strcat(path, sock_name);
   cfg->unix_socket = path;

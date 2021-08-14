@@ -1,4 +1,4 @@
-.PHONY = clean
+.PHONY = clean style
 
 CC = g++
 CFLAGS = -O3 -std=c++14 -Wall -Ihopscotch-map/include -Irapidjson/include
@@ -14,3 +14,6 @@ out/glass-trans: $(OBJ)
 
 clean:
 	rm -f out/*.o out/glass-trans
+
+style:
+	clang-format -i -style=Google src/*.cpp src/*.h

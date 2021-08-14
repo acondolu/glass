@@ -1,6 +1,7 @@
+#include "shutdown.h"
+
 #include <cstdlib>
 
-#include "shutdown.h"
 #include "pipe.h"
 
 Pipe<void> p = Pipe<void>();
