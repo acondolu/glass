@@ -1,4 +1,5 @@
 #include <errno.h>
+#include <fcntl.h>
 #include <pwd.h>
 #include <signal.h>
 #include <stdio.h>
@@ -25,6 +26,21 @@
 void TERMhandler(int sig) { Shutdown::exit(); }
 
 int main(int argc, char *argv[]) {
+  // Cleanup
+  // Close all open file descriptors
+  for (int fd = sysconf(_SC_OPEN_MAX); fd >= 3; fd--) {
+    close(fd);
+  }
+  if (int fdnull = open("/dev/null", O_RDWR)) {
+    dup2(fdnull, STDIN_FILENO);
+    // FIXME: decide what to do with STDOUT and STDERR
+    // dup2(fdnull, STDOUT_FILENO);
+    // dup2(fdnull, STDERR_FILENO);
+    close(fdnull);
+  } else {
+    perror("Failed to open /dev/null");
+    return errno;
+  }
   // Parse command line arguments
   if (argc != 2) {
     fprintf(stderr, "Usage: %s [CONF.JSON]\n", argv[0]);

@@ -260,7 +260,7 @@ int cb_command(Translator::cmd *cmd) {
     }
     default:
       free(cmd);
-      printf("FATAL: command not implemented\n");
+      Logging::fatal("cb_command: unknown command\n");
       exit(1);
   }
   return 0;
@@ -278,32 +278,32 @@ void time_callback(Translator::cmd *c) {
 int Netfilter::init(Config::config *cfg) {
   h = nfq_open();
   if (!h) {
-    fprintf(stderr, "error during nfq_open()\n");
+    Logging::fatal("error during nfq_open()");
     return -1;
   }
 
-  printf("unbinding existing nf_queue handler for AF_INET (if any)\n");
+  Logging::debug("unbinding existing nf_queue handler for AF_INET (if any)");
   if (nfq_unbind_pf(h, AF_INET) < 0) {
-    fprintf(stderr, "error during nfq_unbind_pf()\n");
+    Logging::fatal("error during nfq_unbind_pf()");
     return -1;
   }
 
-  printf("binding nfnetlink_queue as nf_queue handler for AF_INET\n");
+  Logging::debug("binding nfnetlink_queue as nf_queue handler for AF_INET");
   if (nfq_bind_pf(h, AF_INET) < 0) {
-    fprintf(stderr, "error during nfq_bind_pf()\n");
+    Logging::fatal("error during nfq_bind_pf()");
     return -1;
   }
 
-  printf("binding this socket to queue '%d'\n", cfg->nfqueue_number);
+  Logging::debug("binding this socket to queue '%d'", cfg->nfqueue_number);
   qh = nfq_create_queue(h, cfg->nfqueue_number, &cb, NULL);
   if (!qh) {
-    fprintf(stderr, "error during nfq_create_queue()\n");
+    Logging::fatal("error during nfq_create_queue()\n");
     return -1;
   }
 
-  printf("setting copy_packet mode\n");
+  Logging::debug("setting copy_packet mode");
   if (nfq_set_mode(qh, NFQNL_COPY_PACKET, 0xffff) < 0) {
-    fprintf(stderr, "can't set packet_copy mode\n");
+    Logging::fatal("couldn't set packet_copy mode");
     return -1;
   }
   // Init raw socket
